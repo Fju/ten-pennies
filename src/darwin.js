@@ -20,35 +20,88 @@ export default class Darwin {
 		}
 		
 		// evaluate fitness
-		let i, j, fitness = 0, gene, x, y;
+		let fitness, gene, genes, individual, x, y;
 		let r = this.CIRCLE_RADIUS;
-		for (i = 0; i != this.population.length; ++i) {
+		let A = Math.PI * r * r;
+		for (individual of this.population) {
 			fitness = 0;
-			for (gene of this.population[i].genes) {
+
+			genes = individual.genes;
+			for (gene of genes) {
 				x = gene.x;
-				y = gene.y;
+				y = gene.y;				
 				
-				A = Math.PI * r * r;
+				if (utils.circleInSquare(x, y, r)) fitness++;				
 				
-				if (utils.circleInSquare(x, y, r)) fitness += A; 
-				else {
-					// TODO: calculate how much of the circle is inside the square
-				}
-				
-				// TODO: calculate IOU's of circles	
 			}
+			
+			let a, b;
+			// nested loop for every possible combination of circles (ignoring order)
+			// it will iterate circles * (circles - 1) / 2 times -> O(n²)
+			for (a = 0; a !== genes.length - 1; ++a) {
+				for (b = a + 1; b !== genes.length; ++b) {
+					fitness -= utils.iou(genes[a].x, genes[a].y, genes[b].x, genes[b].y, r) 
+				}
+			}
+
+			// set the fitness of the current individual
+			individual.fitness = fitness;
 		}
-	
-		this.step++;
-	}
-	selection() {
-		
-		// sort
+
+		// sort ascending
 		this.population.sort((a, b) => {
-			if (a.fitness > b.fitness) return 1;
-			else if (a.fitness < b.fitness) return -1;
+			if (a.fitness > b.fitness) return -1;
+			else if (a.fitness < b.fitness) return 1;
 			return 0;
+		});		
+		
+		let rand, index;
+
+		// selection
+		while (this.population.length > this.POPULATION_COUNT / 2) {
+			// randomly kill one individual
+			// better individuals are more likely to survive
+			rand = Math.random();
+			this.population.splice(Math.floor((1 - rand * rand * rand) * this.population.length), 1);
+		}
+
+		// reproduce
+		let parent_range = this.population.length, child, parentA, parentB;
+		while (this.population.length < this.POPULATION_COUNT) {
+			// randomly pick individuals for reproduction
+			rand = Math.random();
+			parentA = Math.floor(rand * rand * rand * parent_range);
+			parentB = parentA;
+			while (parentA === parentB) {
+				rand = Math.random();
+				parentB = Math.floor(rand * rand * rand * parent_range);
+			}
+		
+			child = new Individual();
+			child.crossover(this.population[parentA], this.population[parentB], 3);
+			child.mutate(this.MUTATION_PROBABILITY);
+
+			this.population.push(child);			
+		}
+		this.step++;
+
+
+		let best = this.population[0].fitness;
+		let progress = best / this.CIRCLE_COUNT;	
+		
+		var sum = this.population.reduce((a, b) => {
+			// small hack, first `a` is an object otherwise it's the previous value of the added fitnesses
+			if (typeof a === 'object') return a.fitness + b.fitness;
+			return a + b.fitness;
 		});
+		var avg = sum / this.POPULATION_COUNT;
+
+		return {
+			step: this.step,
+			best: best,
+			avg: avg,
+			progress: progress
+		};
 	}
 	init() {
 		let i;
@@ -58,5 +111,8 @@ export default class Darwin {
 		for (i = 0; i != this.POPULATION_COUNT; ++i) {
 			this.population[i] = new Individual(this.CIRCLE_COUNT);
 		}		
+	}
+	getBest() {
+		return this.population[0].genes;
 	}
 }
